@@ -12,11 +12,24 @@ interface Particle {
   sourceId: string;
   targetId: string;
   start: number;
+  /** true if this particle rides the polyline for edge sourceId->targetId backward (a response hop) */
+  isResponse: boolean;
 }
 
 interface DropFlash {
   nodeId: string;
   start: number;
+}
+
+interface Point {
+  x: number;
+  y: number;
+}
+
+interface EdgePolyline {
+  points: Point[];
+  cum: number[];
+  total: number;
 }
 
 function lerpColor(a: [number, number, number], b: [number, number, number], t: number): string {
@@ -33,6 +46,47 @@ function packetColor(util: number, crashed: boolean): string {
   const t = Math.max(0, Math.min(1, util));
   if (t <= 0.5) return lerpColor(GREEN, AMBER, t / 0.5);
   return lerpColor(AMBER, RED, (t - 0.5) / 0.5);
+}
+
+/** Build the smoothstep-shaped elbow polyline (horizontal routing) between a source's right-center and a target's left-center. */
+function buildElbowPolyline(p0: Point, p3: Point): EdgePolyline {
+  const midX = (p0.x + p3.x) / 2;
+  const points: Point[] = [p0, { x: midX, y: p0.y }, { x: midX, y: p3.y }, p3];
+  const cum: number[] = [0];
+  let total = 0;
+  for (let i = 1; i < points.length; i++) {
+    const dx = points[i].x - points[i - 1].x;
+    const dy = points[i].y - points[i - 1].y;
+    total += Math.sqrt(dx * dx + dy * dy);
+    cum.push(total);
+  }
+  return { points, cum, total };
+}
+
+/** Walk arc-length t in [0,1] along a polyline, returning the point and the direction angle of the segment it falls in. */
+function pointAtT(poly: EdgePolyline, t: number): { x: number; y: number; angle: number } {
+  const { points, cum, total } = poly;
+  const clampedT = Math.max(0, Math.min(1, t));
+  const targetLen = clampedT * total;
+
+  let segIdx = points.length - 2;
+  for (let i = 1; i < cum.length; i++) {
+    if (targetLen <= cum[i] || i === cum.length - 1) {
+      segIdx = i - 1;
+      break;
+    }
+  }
+
+  const segStart = points[segIdx];
+  const segEnd = points[segIdx + 1];
+  const segLen = cum[segIdx + 1] - cum[segIdx];
+  const segT = segLen > 0 ? (targetLen - cum[segIdx]) / segLen : 0;
+
+  return {
+    x: segStart.x + (segEnd.x - segStart.x) * segT,
+    y: segStart.y + (segEnd.y - segStart.y) * segT,
+    angle: Math.atan2(segEnd.y - segStart.y, segEnd.x - segStart.x),
+  };
 }
 
 export default function FlowOverlay() {
@@ -54,17 +108,6 @@ export default function FlowOverlay() {
       const now = performance.now();
       const flows = runner.takeFlowEvents();
       const drops = runner.takeDropEvents();
-
-      for (const f of flows) {
-        if (particlesRef.current.length < MAX_PARTICLES) {
-          particlesRef.current.push({ sourceId: f.sourceId, targetId: f.targetId, start: now });
-        }
-      }
-      for (const d of drops) {
-        if (flashesRef.current.length < MAX_FLASHES) {
-          flashesRef.current.push({ nodeId: d.nodeId, start: now });
-        }
-      }
 
       const { x: vx, y: vy, zoom } = getViewport();
       const nodes = useDesignStore.getState().nodes;
@@ -103,6 +146,43 @@ export default function FlowOverlay() {
         });
       }
 
+      // Build the drawn-edge -> elbow polyline lookup once per frame, keyed by "source->target".
+      const edgePolylines = new Map<string, EdgePolyline>();
+      for (const e of edges) {
+        const S = nodeMap.get(e.source);
+        const T = nodeMap.get(e.target);
+        if (!S || !T) continue;
+        const key = `${e.source}->${e.target}`;
+        edgePolylines.set(key, buildElbowPolyline({ x: S.exitX, y: S.exitY }, { x: T.entryX, y: T.entryY }));
+      }
+
+      // Match incoming flow events to a drawn edge's polyline; drop events with no matching wire.
+      for (const f of flows) {
+        if (particlesRef.current.length >= MAX_PARTICLES) continue;
+        if (edgePolylines.has(`${f.sourceId}->${f.targetId}`)) {
+          particlesRef.current.push({
+            sourceId: f.sourceId,
+            targetId: f.targetId,
+            start: now,
+            isResponse: false,
+          });
+        } else if (edgePolylines.has(`${f.targetId}->${f.sourceId}`)) {
+          // Response hop: travels the drawn edge targetId->? backward, i.e. along edge (f.targetId -> f.sourceId).
+          particlesRef.current.push({
+            sourceId: f.targetId,
+            targetId: f.sourceId,
+            start: now,
+            isResponse: true,
+          });
+        }
+        // else: no matching drawn wire in either direction — skip, never draw off-wire packets.
+      }
+      for (const d of drops) {
+        if (flashesRef.current.length < MAX_FLASHES) {
+          flashesRef.current.push({ nodeId: d.nodeId, start: now });
+        }
+      }
+
       const dpr = window.devicePixelRatio || 1;
       const rect = canvas.getBoundingClientRect();
       const cssW = rect.width || canvas.clientWidth;
@@ -137,26 +217,27 @@ export default function FlowOverlay() {
       }
       ctx.globalAlpha = 1;
 
-      // wire pass: red error wires + label for edges whose target is failing
+      // wire pass: red error wires + label for edges whose target is failing, drawn along the full elbow polyline
       for (const e of edges) {
-        const S = nodeMap.get(e.source);
         const T = nodeMap.get(e.target);
-        if (!S || !T) continue;
+        if (!T) continue;
         const failing = T.crashed || T.util >= 0.85;
         if (!failing) continue;
-
-        const [x1, y1] = toScreen(S.exitX, S.exitY);
-        const [x2, y2] = toScreen(T.entryX, T.entryY);
+        const poly = edgePolylines.get(`${e.source}->${e.target}`);
+        if (!poly) continue;
 
         ctx.beginPath();
         ctx.strokeStyle = "#ef4444";
         ctx.lineWidth = Math.max(1, 2 * zoom);
-        ctx.moveTo(x1, y1);
-        ctx.lineTo(x2, y2);
+        poly.points.forEach((pt, i) => {
+          const [sx, sy] = toScreen(pt.x, pt.y);
+          if (i === 0) ctx.moveTo(sx, sy);
+          else ctx.lineTo(sx, sy);
+        });
         ctx.stroke();
 
-        const mx = (x1 + x2) / 2;
-        const my = (y1 + y2) / 2;
+        const mid = pointAtT(poly, 0.5);
+        const [mx, my] = toScreen(mid.x, mid.y);
         const label = "error";
         ctx.font = `${Math.max(9, 9 * zoom)}px sans-serif`;
         const textW = ctx.measureText(label).width;
@@ -184,30 +265,36 @@ export default function FlowOverlay() {
         ctx.fillText(label, mx, my + 0.5);
       }
 
-      // traveling particles: pills riding the wire between box edges
+      // traveling particles: pills riding the elbow polyline of the drawn wire
       ctx.globalCompositeOperation = "lighter";
       particlesRef.current = particlesRef.current.filter((p) => {
-        const t = (now - p.start) / TRAVEL_MS;
-        if (t >= 1) return false;
-        const S = nodeMap.get(p.sourceId);
-        const T = nodeMap.get(p.targetId);
-        if (!S || !T) return false;
+        const rawT = (now - p.start) / TRAVEL_MS;
+        if (rawT >= 1) return false;
+        const poly = edgePolylines.get(`${p.sourceId}->${p.targetId}`);
+        if (!poly) return false;
+        // Response particles ride the same polyline but travel backward (t: 1 -> 0).
+        const t = p.isResponse ? 1 - rawT : rawT;
 
-        const fx = S.exitX + (T.entryX - S.exitX) * t;
-        const fy = S.exitY + (T.entryY - S.exitY) * t;
+        const { x: fx, y: fy, angle } = pointAtT(poly, t);
         const [sx, sy] = toScreen(fx, fy);
 
-        const util = T.crashed ? 1 : Math.max(0, Math.min(1, T.util));
-        const color = packetColor(util, T.crashed);
+        // Utilization/crash coloring is keyed off the logical destination of this hop.
+        const destId = p.isResponse ? p.sourceId : p.targetId;
+        const dest = nodeMap.get(destId);
+        const util = dest?.crashed ? 1 : Math.max(0, Math.min(1, dest?.util ?? 0));
+        const crashed = dest?.crashed ?? false;
+        const color = packetColor(util, crashed);
 
-        const angle = Math.atan2(T.entryY - S.exitY, T.entryX - S.exitX);
-        const length = Math.max(3, 9 * zoom);
-        const thickness = Math.max(1.2, 3.5 * zoom);
+        const drawAngle = p.isResponse ? angle + Math.PI : angle;
+        const sizeScale = p.isResponse ? 0.75 : 1;
+        const length = Math.max(3, 9 * zoom) * sizeScale;
+        const thickness = Math.max(1.2, 3.5 * zoom) * sizeScale;
         const glowR = thickness * 2.5;
 
         ctx.save();
         ctx.translate(sx, sy);
-        ctx.rotate(angle);
+        ctx.rotate(drawAngle);
+        ctx.globalAlpha = p.isResponse ? 0.6 : 1;
 
         const gradient = ctx.createRadialGradient(0, 0, 0, 0, 0, glowR);
         gradient.addColorStop(0, color);
@@ -220,20 +307,34 @@ export default function FlowOverlay() {
         const halfL = length / 2;
         const halfT = thickness / 2;
         ctx.beginPath();
-        ctx.fillStyle = color;
-        ctx.moveTo(-halfL + halfT, -halfT);
-        ctx.lineTo(halfL - halfT, -halfT);
-        ctx.arc(halfL - halfT, 0, halfT, -Math.PI / 2, Math.PI / 2);
-        ctx.lineTo(-halfL + halfT, halfT);
-        ctx.arc(-halfL + halfT, 0, halfT, Math.PI / 2, -Math.PI / 2);
-        ctx.closePath();
-        ctx.fill();
+        if (p.isResponse) {
+          // hollow outline for response packets so both directions read clearly on one wire
+          ctx.strokeStyle = color;
+          ctx.lineWidth = Math.max(0.75, thickness * 0.3);
+          ctx.moveTo(-halfL + halfT, -halfT);
+          ctx.lineTo(halfL - halfT, -halfT);
+          ctx.arc(halfL - halfT, 0, halfT, -Math.PI / 2, Math.PI / 2);
+          ctx.lineTo(-halfL + halfT, halfT);
+          ctx.arc(-halfL + halfT, 0, halfT, Math.PI / 2, -Math.PI / 2);
+          ctx.closePath();
+          ctx.stroke();
+        } else {
+          ctx.fillStyle = color;
+          ctx.moveTo(-halfL + halfT, -halfT);
+          ctx.lineTo(halfL - halfT, -halfT);
+          ctx.arc(halfL - halfT, 0, halfT, -Math.PI / 2, Math.PI / 2);
+          ctx.lineTo(-halfL + halfT, halfT);
+          ctx.arc(-halfL + halfT, 0, halfT, Math.PI / 2, -Math.PI / 2);
+          ctx.closePath();
+          ctx.fill();
+        }
 
         ctx.restore();
 
         return true;
       });
       ctx.globalCompositeOperation = "source-over";
+      ctx.globalAlpha = 1;
 
       // drop flashes
       flashesRef.current = flashesRef.current.filter((f) => {

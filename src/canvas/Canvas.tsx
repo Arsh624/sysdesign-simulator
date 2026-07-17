@@ -67,6 +67,7 @@ export function Canvas() {
         onNodeClick={handleNodeClick}
         onPaneClick={handlePaneClick}
         deleteKeyCode={["Delete", "Backspace"]}
+        defaultEdgeOptions={{ type: "smoothstep" }}
         fitView
       >
         <Background />
