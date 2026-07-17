@@ -19,6 +19,7 @@ export class SimRunner {
   private lastTs: number | null = null;
   private windowMs = 0;
   private lastCompleted = 0;
+  private paused = false;
 
   private build(): void {
     const { nodes, edges } = useDesignStore.getState();
@@ -48,6 +49,15 @@ export class SimRunner {
 
   start(): void {
     if (this.raf != null) return;
+    if (this.paused && this.state) {
+      // resume the existing run rather than discarding it
+      this.paused = false;
+      useSimStore.getState().setRunning(true);
+      this.lastTs = null;
+      this.raf = requestAnimationFrame(this.frame);
+      return;
+    }
+    this.paused = false;
     this.build();
     useSimStore.getState().setRunning(true);
     this.lastTs = null;
@@ -112,6 +122,7 @@ export class SimRunner {
       cancelAnimationFrame(this.raf);
       this.raf = null;
     }
+    this.paused = true;
     useSimStore.getState().setRunning(false);
   }
 
@@ -132,6 +143,7 @@ export class SimRunner {
     this.lastTs = null;
     this.windowMs = 0;
     this.lastCompleted = 0;
+    this.paused = false;
     useSimStore.getState().reset();
     for (const n of useDesignStore.getState().nodes) {
       useDesignStore.getState().updateNodeRuntime(n.id, {
