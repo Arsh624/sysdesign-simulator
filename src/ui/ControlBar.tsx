@@ -48,7 +48,7 @@ export default function ControlBar({ children }: ControlBarProps) {
   const setTraffic = useSimStore((s) => s.setTraffic);
 
   return (
-    <div className="flex items-center gap-3 px-3 py-2 border-b">
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-2 px-3 py-2 border-b">
       {running ? (
         <button
           type="button"
@@ -88,9 +88,9 @@ export default function ControlBar({ children }: ControlBarProps) {
       <Segmented label="Speed" value={speed} options={SPEED_OPTIONS} onChange={setSpeed} />
       <Segmented label="Traffic" value={traffic} options={TRAFFIC_OPTIONS} onChange={setTraffic} />
 
-      <div className="flex-1" />
+      <div className="w-px self-stretch bg-gray-300" />
 
-      <div className="flex items-center gap-2">{children}</div>
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-2">{children}</div>
     </div>
   );
 }

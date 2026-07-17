@@ -13,7 +13,7 @@ function ChaosControls() {
     "px-2 py-1 rounded border text-sm border-green-400 text-green-700 hover:bg-green-50 disabled:opacity-40 disabled:cursor-not-allowed";
 
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex flex-wrap items-center gap-x-2 gap-y-2">
       <span className="text-sm font-medium">Chaos:</span>
       <button
         type="button"
