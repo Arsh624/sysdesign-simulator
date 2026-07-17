@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import Palette from "./ui/Palette";
 import Canvas from "./canvas/Canvas";
 import ControlBar from "./ui/ControlBar";
+import Hud from "./ui/Hud";
 import Inspector from "./ui/Inspector";
 import MetricsPanel from "./ui/MetricsPanel";
 import ChaosControls from "./ui/ChaosControls";
@@ -32,8 +33,9 @@ function App() {
         <Palette />
       </div>
 
-      {/* CENTER: Control bar + Canvas */}
+      {/* CENTER: HUD + Control bar + Canvas */}
       <div className="flex-1 flex flex-col min-w-0">
+        <Hud />
         <ControlBar>
           <div className="flex items-center gap-3">
             <PresetPicker />
