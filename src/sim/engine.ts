@@ -58,7 +58,6 @@ function subStep(state: SimState, dtMs: number, params: RunParams) {
     for (const item of n.inService) {
       item.remainingMs -= dtMs;
       if (item.remainingMs <= 0) {
-        item.token.latencyMs += n.serviceTimeMs;
         if (Math.random() < n.failureRate) { item.token.failed = true; state.metrics.failed += 1; }
         routeToken(state, id, item.token);
       } else stillBusy.push(item);
@@ -82,7 +81,7 @@ function drainSinks(state: SimState) {
     if (!n.isSink) continue;
     for (const token of n.queue.splice(0)) {
       state.metrics.completed += 1;
-      state.metrics.latencySamples.push(token.latencyMs);
+      state.metrics.latencySamples.push(state.metrics.simTimeMs - token.bornAtMs);
     }
   }
 }
@@ -94,7 +93,7 @@ export function routeToken(state: SimState, fromId: string, token: RequestToken)
     const n = state.nodes[fromId];
     if (n.isSink) return; // sink handled in drain
     state.metrics.completed += 1;
-    state.metrics.latencySamples.push(token.latencyMs);
+    state.metrics.latencySamples.push(state.metrics.simTimeMs - token.bornAtMs);
     return;
   }
   // route to first edge target for v1 generation test
