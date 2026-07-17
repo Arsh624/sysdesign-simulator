@@ -101,13 +101,18 @@ export function routeToken(state: SimState, fromId: string, token: RequestToken)
     state.metrics.latencySamples.push(state.metrics.simTimeMs - token.bornAtMs);
     return;
   }
-  // round-robin across all outgoing edges
-  const i = (state.rr[fromId] ?? 0) % edges.length;
-  state.rr[fromId] = (state.rr[fromId] ?? 0) + 1;
-  const target = state.nodes[edges[i].target];
-  state.flowEvents.push({ id: token.id, sourceId: fromId, targetId: edges[i].target, bornAtMs: state.metrics.simTimeMs });
-  if (state.flowEvents.length > 10000) state.flowEvents.splice(0, 5000);
-  enqueue(state, target, token);
+  // Fan out to EVERY downstream node: one request that reaches a node with
+  // several outgoing edges becomes a downstream call on each of them (an app
+  // server queries its cache AND its database, it doesn't pick one). The first
+  // edge reuses this token; additional edges get a cloned sibling request.
+  for (let i = 0; i < edges.length; i++) {
+    const t: RequestToken =
+      i === 0 ? token : { ...token, id: state.nextTokenId++, nodeEnqueuedAtMs: undefined };
+    const target = state.nodes[edges[i].target];
+    state.flowEvents.push({ id: t.id, sourceId: fromId, targetId: edges[i].target, bornAtMs: state.metrics.simTimeMs });
+    if (state.flowEvents.length > 10000) state.flowEvents.splice(0, 5000);
+    enqueue(state, target, t);
+  }
 }
 
 export function enqueue(state: SimState, node: SimNode, token: RequestToken) {

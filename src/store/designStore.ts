@@ -129,7 +129,30 @@ export const useDesignStore = create<DesignState>()((set, get) => ({
 
   setSelected: (id) => set({ selectedNodeId: id }),
 
-  loadDesign: (d) => set({ nodes: d.nodes, edges: d.edges, selectedNodeId: null }),
+  loadDesign: (d) =>
+    set({
+      // Normalize loaded designs (autosave/import/preset): give sources a
+      // meaningful request rate (older designs saved a near-zero default that
+      // never stressed anything) and backfill runtime fields for old data.
+      nodes: d.nodes.map((n) => {
+        const isSource = !!findComponent(n.data.componentId)?.isSource;
+        const rate = n.data.genRatePerSec;
+        return {
+          ...n,
+          data: {
+            ...n.data,
+            genRatePerSec: isSource && (rate == null || rate < 100) ? 800 : rate,
+            utilization: n.data.utilization ?? 0,
+            queueDepth: n.data.queueDepth ?? 0,
+            crashed: n.data.crashed ?? false,
+            rps: n.data.rps ?? 0,
+            p95: n.data.p95 ?? 0,
+          },
+        };
+      }),
+      edges: d.edges,
+      selectedNodeId: null,
+    }),
 
   clear: () => set({ nodes: [], edges: [], selectedNodeId: null }),
 }));
