@@ -20,6 +20,8 @@ export interface SystemNodeData extends Record<string, unknown> {
   utilization: number;
   queueDepth: number;
   crashed: boolean;
+  rps: number;
+  p95: number;
 }
 
 let nodeCounter = 0;
@@ -36,7 +38,7 @@ interface DesignState {
   ) => void;
   updateNodeRuntime: (
     id: string,
-    rt: { utilization: number; queueDepth: number; crashed: boolean }
+    rt: { utilization: number; queueDepth: number; crashed: boolean; rps?: number; p95?: number }
   ) => void;
   onNodesChange: (changes: NodeChange<Node<SystemNodeData>>[]) => void;
   onEdgesChange: (changes: EdgeChange[]) => void;
@@ -68,6 +70,8 @@ export const useDesignStore = create<DesignState>()((set, get) => ({
         utilization: 0,
         queueDepth: 0,
         crashed: false,
+        rps: 0,
+        p95: 0,
       },
     };
     set({ nodes: [...get().nodes, newNode] });
@@ -102,6 +106,8 @@ export const useDesignStore = create<DesignState>()((set, get) => ({
                 utilization: rt.utilization,
                 queueDepth: rt.queueDepth,
                 crashed: rt.crashed,
+                rps: rt.rps ?? n.data.rps,
+                p95: rt.p95 ?? n.data.p95,
               },
             }
           : n

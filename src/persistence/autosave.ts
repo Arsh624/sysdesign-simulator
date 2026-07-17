@@ -11,7 +11,7 @@ export function initAutosave(): () => void {
     timer = setTimeout(() => {
       const cleanNodes = state.nodes.map((n) => ({
         ...n,
-        data: { ...n.data, utilization: 0, queueDepth: 0, crashed: false },
+        data: { ...n.data, utilization: 0, queueDepth: 0, crashed: false, rps: 0, p95: 0 },
       }));
       autosave({ nodes: cleanNodes, edges: state.edges });
     }, DEBOUNCE_MS);

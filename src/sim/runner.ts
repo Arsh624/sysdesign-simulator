@@ -1,5 +1,5 @@
 import { createSimState, step } from "./engine";
-import { summarize } from "./metrics";
+import { summarize, percentile } from "./metrics";
 import { applyChaos, type ChaosEvent } from "./chaos";
 import type { SimState, SimEdge, FlowEvent, DropEvent } from "./types";
 import { useDesignStore } from "../store/designStore";
@@ -19,6 +19,7 @@ export class SimRunner {
   private lastTs: number | null = null;
   private windowMs = 0;
   private lastCompleted = 0;
+  private lastNodeCompleted: Record<string, number> = {};
   private paused = false;
 
   private build(): void {
@@ -63,6 +64,7 @@ export class SimRunner {
     this.lastTs = null;
     this.windowMs = 0;
     this.lastCompleted = 0;
+    this.lastNodeCompleted = {};
     this.raf = requestAnimationFrame(this.frame);
   }
 
@@ -112,7 +114,11 @@ export class SimRunner {
       const utilization = Math.min(1, n.busyMsThisWindow / (n.concurrency * windowMs || 1));
       const queueDepth = n.queue.length;
       const crashed = n.capacity === 0;
-      useDesignStore.getState().updateNodeRuntime(id, { utilization, queueDepth, crashed });
+      const rps = (n.completedCount - (this.lastNodeCompleted[id] ?? 0)) / (windowMs / 1000 || 1);
+      this.lastNodeCompleted[id] = n.completedCount;
+      const p95 = percentile(n.latencyWindow, 95);
+      if (n.latencyWindow.length > 300) n.latencyWindow = n.latencyWindow.slice(-300);
+      useDesignStore.getState().updateNodeRuntime(id, { utilization, queueDepth, crashed, rps, p95 });
       n.busyMsThisWindow = 0;
     }
   }
@@ -143,6 +149,7 @@ export class SimRunner {
     this.lastTs = null;
     this.windowMs = 0;
     this.lastCompleted = 0;
+    this.lastNodeCompleted = {};
     this.paused = false;
     useSimStore.getState().reset();
     for (const n of useDesignStore.getState().nodes) {
@@ -150,6 +157,8 @@ export class SimRunner {
         utilization: 0,
         queueDepth: 0,
         crashed: false,
+        rps: 0,
+        p95: 0,
       });
     }
   }

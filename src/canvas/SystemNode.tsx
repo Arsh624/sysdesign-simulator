@@ -73,6 +73,9 @@ function SystemNode(props: NodeProps) {
               Q {data.queueDepth}
             </div>
           )}
+          <div className="mt-0.5 text-[10px] leading-tight text-gray-700">
+            {Math.round(data.rps ?? 0)} rps · {Math.round(data.p95 ?? 0)}ms p95
+          </div>
         </div>
       )}
       <Handle type="source" position={Position.Right} />

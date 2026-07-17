@@ -11,7 +11,7 @@ export function createSimState(init: StateInit): SimState {
   const nodes: Record<string, SimNode> = {};
   const genCarry: Record<string, number> = {};
   for (const n of init.nodes) {
-    nodes[n.id] = { ...n, queue: [], inService: [], busyMsThisWindow: 0 };
+    nodes[n.id] = { ...n, queue: [], inService: [], busyMsThisWindow: 0, completedCount: 0, latencyWindow: [] };
     if (n.isSource) genCarry[n.id] = 0;
   }
   const outgoing: Record<string, SimEdge[]> = {};
@@ -60,6 +60,7 @@ function subStep(state: SimState, dtMs: number, params: RunParams) {
       item.remainingMs -= dtMs;
       if (item.remainingMs <= 0) {
         if (Math.random() < n.failureRate) { item.token.failed = true; state.metrics.failed += 1; }
+        recordNodeCompletion(state, n, item.token);
         routeToken(state, id, item.token);
       } else stillBusy.push(item);
     }
@@ -68,7 +69,10 @@ function subStep(state: SimState, dtMs: number, params: RunParams) {
     // admit from queue up to concurrency
     while (n.inService.length < n.concurrency && n.queue.length > 0) {
       const token = n.queue.shift()!;
-      if (n.serviceTimeMs <= 0) { routeToken(state, id, token); }
+      if (n.serviceTimeMs <= 0) {
+        recordNodeCompletion(state, n, token);
+        routeToken(state, id, token);
+      }
       else n.inService.push({ token, remainingMs: n.serviceTimeMs });
     }
   }
@@ -113,5 +117,16 @@ export function enqueue(state: SimState, node: SimNode, token: RequestToken) {
     if (state.dropEvents.length > 10000) state.dropEvents.splice(0, 5000);
     return;
   }
+  token.nodeEnqueuedAtMs = state.metrics.simTimeMs;
   node.queue.push(token);
+}
+
+// Pure accounting: records per-node completion telemetry (rps/p95 source data).
+// Does not touch token.latencyMs, failure, routing, or drop logic.
+function recordNodeCompletion(state: SimState, n: SimNode, token: RequestToken) {
+  const enq = token.nodeEnqueuedAtMs;
+  const nodeLatency = enq != null ? state.metrics.simTimeMs - enq : n.serviceTimeMs;
+  n.completedCount += 1;
+  n.latencyWindow.push(nodeLatency);
+  if (n.latencyWindow.length > 500) n.latencyWindow = n.latencyWindow.slice(-500);
 }

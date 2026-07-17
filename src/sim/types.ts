@@ -13,6 +13,9 @@ export interface SimNode {
   inService: { token: RequestToken; remainingMs: number }[];
   // accumulators for utilization:
   busyMsThisWindow: number;
+  // accumulators for per-node telemetry (rps / p95):
+  completedCount: number;
+  latencyWindow: number[];
 }
 
 export interface SimEdge { id: string; source: string; target: string; }
@@ -22,6 +25,7 @@ export interface RequestToken {
   bornAtMs: number;         // sim time created
   latencyMs: number;        // accumulated
   failed: boolean;
+  nodeEnqueuedAtMs?: number; // sim time this token was last enqueued at a node (for per-node latency)
 }
 
 export interface Metrics {

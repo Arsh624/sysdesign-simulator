@@ -72,6 +72,8 @@ export function buildPreset(spec: PresetSpec): {
         utilization: 0,
         queueDepth: 0,
         crashed: false,
+        rps: 0,
+        p95: 0,
       },
     });
   });
