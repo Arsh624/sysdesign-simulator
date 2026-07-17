@@ -19,7 +19,7 @@ export function createSimState(init: StateInit): SimState {
   return {
     nodes, order: init.nodes.map((n) => n.id), edges: init.edges, outgoing,
     metrics: { completed: 0, dropped: 0, failed: 0, latencySamples: [], throughputWindow: [], simTimeMs: 0 },
-    nextTokenId: 1, genCarry,
+    nextTokenId: 1, genCarry, rr: {},
   };
 }
 
@@ -96,8 +96,10 @@ export function routeToken(state: SimState, fromId: string, token: RequestToken)
     state.metrics.latencySamples.push(state.metrics.simTimeMs - token.bornAtMs);
     return;
   }
-  // route to first edge target for v1 generation test
-  const target = state.nodes[edges[0].target];
+  // round-robin across all outgoing edges
+  const i = (state.rr[fromId] ?? 0) % edges.length;
+  state.rr[fromId] = (state.rr[fromId] ?? 0) + 1;
+  const target = state.nodes[edges[i].target];
   enqueue(state, target, token);
 }
 
