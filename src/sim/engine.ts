@@ -23,7 +23,7 @@ export function createSimState(init: StateInit): SimState {
   };
 }
 
-const SUBSTEP_MS = 50;
+const SUBSTEP_MS = 1;
 
 export function step(state: SimState, dtMs: number, params: RunParams): SimState {
   const scaled = dtMs * params.speed;
@@ -49,7 +49,30 @@ function subStep(state: SimState, dtMs: number, params: RunParams) {
       routeToken(state, id, token);
     }
   }
-  // Task 4 adds node service; for now move queued tokens straight through sinks.
+  // 2. advance in-service work and admit from queue for every node
+  for (const id of state.order) {
+    const n = state.nodes[id];
+    if (n.isSink) continue;
+    // advance in-service
+    const stillBusy: typeof n.inService = [];
+    for (const item of n.inService) {
+      item.remainingMs -= dtMs;
+      if (item.remainingMs <= 0) {
+        item.token.latencyMs += n.serviceTimeMs;
+        if (Math.random() < n.failureRate) { item.token.failed = true; state.metrics.failed += 1; }
+        routeToken(state, id, item.token);
+      } else stillBusy.push(item);
+    }
+    n.inService = stillBusy;
+    n.busyMsThisWindow += n.inService.length * dtMs;
+    // admit from queue up to concurrency
+    while (n.inService.length < n.concurrency && n.queue.length > 0) {
+      const token = n.queue.shift()!;
+      if (n.serviceTimeMs <= 0) { routeToken(state, id, token); }
+      else n.inService.push({ token, remainingMs: n.serviceTimeMs });
+    }
+  }
+  // 3. sinks record completion
   drainSinks(state);
 }
 
