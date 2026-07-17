@@ -16,6 +16,7 @@ import { varianceFor } from "./profiles";
  */
 export class SimRunner {
   private state: SimState | null = null;
+  /** interval id for the tick loop (setInterval, not RAF, so background tabs keep simulating) */
   private raf: number | null = null;
   private lastTs: number | null = null;
   private windowMs = 0;
@@ -56,7 +57,7 @@ export class SimRunner {
       this.paused = false;
       useSimStore.getState().setRunning(true);
       this.lastTs = null;
-      this.raf = requestAnimationFrame(this.frame);
+      this.raf = window.setInterval(this.frame, 33);
       return;
     }
     this.paused = false;
@@ -65,10 +66,11 @@ export class SimRunner {
     this.lastTs = null;
     this.windowMs = 0;
     this.lastCompleted = 0;
-    this.raf = requestAnimationFrame(this.frame);
+    this.raf = window.setInterval(this.frame, 33);
   }
 
-  private frame = (ts: number): void => {
+  private frame = (): void => {
+    const ts = performance.now();
     const dtMs = this.lastTs == null ? 16 : Math.min(100, ts - this.lastTs);
     this.lastTs = ts;
 
@@ -81,8 +83,6 @@ export class SimRunner {
         this.windowMs = 0;
       }
     }
-
-    this.raf = requestAnimationFrame(this.frame);
   };
 
   private snapshot(windowMs: number): void {
@@ -158,7 +158,7 @@ export class SimRunner {
 
   pause(): void {
     if (this.raf != null) {
-      cancelAnimationFrame(this.raf);
+      clearInterval(this.raf);
       this.raf = null;
     }
     this.paused = true;
@@ -175,7 +175,7 @@ export class SimRunner {
 
   stop(): void {
     if (this.raf != null) {
-      cancelAnimationFrame(this.raf);
+      clearInterval(this.raf);
       this.raf = null;
     }
     this.state = null;
