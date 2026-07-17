@@ -5,10 +5,12 @@ function Stat({
   label,
   value,
   valueClassName = "",
+  sublabel,
 }: {
   label: string;
   value: string;
   valueClassName?: string;
+  sublabel?: string | null;
 }) {
   return (
     <div className="flex flex-col leading-tight">
@@ -18,6 +20,11 @@ function Stat({
       <span className={`text-sm font-medium text-gray-900 ${valueClassName}`}>
         {value}
       </span>
+      {sublabel != null && (
+        <span className="text-[9px] uppercase tracking-wide text-gray-400">
+          {sublabel}
+        </span>
+      )}
     </div>
   );
 }
@@ -39,6 +46,37 @@ export default function Hud() {
   const dropRateColor =
     dropRatePct != null && dropRatePct > 5 ? "text-red-600" : "";
 
+  const availability =
+    summary != null ? (1 - summary.dropRate) * 100 : null;
+  const availabilityText =
+    availability != null
+      ? availability < 100
+        ? `${availability.toFixed(2)}%`
+        : "100%"
+      : "—";
+  const availabilityColor =
+    availability != null
+      ? availability < 99
+        ? "text-red-600"
+        : availability < 99.9
+          ? "text-amber-600"
+          : "text-green-600"
+      : "";
+  const ninesText =
+    availability != null
+      ? availability >= 99.999
+        ? "5 nines"
+        : availability >= 99.99
+          ? "4 nines"
+          : availability >= 99.9
+            ? "3 nines"
+            : availability >= 99
+              ? "2 nines"
+              : availability >= 90
+                ? "1 nine"
+                : "low"
+      : null;
+
   let bottleneckText = "—";
   if (nodes.length > 0) {
     const top = nodes.reduce((best, n) =>
@@ -54,6 +92,12 @@ export default function Hud() {
       <Stat label="Throughput" value={throughputText} />
       <Stat label="P95" value={p95Text} />
       <Stat label="Drop Rate" value={dropRateText} valueClassName={dropRateColor} />
+      <Stat
+        label="Availability"
+        value={availabilityText}
+        valueClassName={availabilityColor}
+        sublabel={ninesText}
+      />
       <Stat label="Bottleneck" value={bottleneckText} />
     </div>
   );

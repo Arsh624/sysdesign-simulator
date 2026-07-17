@@ -59,7 +59,7 @@ function SystemNode(props: NodeProps) {
           <div className="flex items-center justify-between text-[10px] leading-tight text-gray-800">
             <span>Load {utilPct}%</span>
           </div>
-          <div className="mt-0.5 h-1 w-full overflow-hidden rounded-full bg-black/15">
+          <div className="mt-0.5 h-[5px] w-full overflow-hidden rounded-full bg-black/15">
             <div
               className="h-full rounded-full transition-[width] duration-200"
               style={{
