@@ -32,6 +32,7 @@ function Stat({
 export default function Hud() {
   const summary = useSimStore((s) => s.summary);
   const history = useSimStore((s) => s.history);
+  const regime = useSimStore((s) => s.regime);
 
   const nodes = useDesignStore((s) => s.nodes);
 
@@ -77,6 +78,13 @@ export default function Hud() {
                 : "low"
       : null;
 
+  const regimeColor =
+    regime === "RUNAWAY"
+      ? "text-red-600"
+      : regime === "SATURATED"
+        ? "text-amber-600"
+        : "text-green-600";
+
   let bottleneckText = "—";
   if (nodes.length > 0) {
     const top = nodes.reduce((best, n) =>
@@ -99,6 +107,7 @@ export default function Hud() {
         sublabel={ninesText}
       />
       <Stat label="Bottleneck" value={bottleneckText} />
+      <Stat label="Regime" value={regime} valueClassName={regimeColor} />
     </div>
   );
 }

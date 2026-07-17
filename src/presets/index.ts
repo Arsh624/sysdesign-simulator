@@ -74,6 +74,8 @@ export function buildPreset(spec: PresetSpec): {
         crashed: false,
         rps: 0,
         p95: 0,
+        errorPct: 0,
+        cbState: "closed",
       },
     });
   });

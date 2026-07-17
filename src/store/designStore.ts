@@ -22,6 +22,8 @@ export interface SystemNodeData extends Record<string, unknown> {
   crashed: boolean;
   rps: number;
   p95: number;
+  errorPct: number;
+  cbState: "closed" | "open" | "half";
 }
 
 let nodeCounter = 0;
@@ -38,7 +40,15 @@ interface DesignState {
   ) => void;
   updateNodeRuntime: (
     id: string,
-    rt: { utilization: number; queueDepth: number; crashed: boolean; rps?: number; p95?: number }
+    rt: {
+      utilization: number;
+      queueDepth: number;
+      crashed: boolean;
+      rps?: number;
+      p95?: number;
+      errorPct?: number;
+      cbState?: "closed" | "open" | "half";
+    }
   ) => void;
   onNodesChange: (changes: NodeChange<Node<SystemNodeData>>[]) => void;
   onEdgesChange: (changes: EdgeChange[]) => void;
@@ -72,6 +82,8 @@ export const useDesignStore = create<DesignState>()((set, get) => ({
         crashed: false,
         rps: 0,
         p95: 0,
+        errorPct: 0,
+        cbState: "closed",
       },
     };
     set({ nodes: [...get().nodes, newNode] });
@@ -108,6 +120,8 @@ export const useDesignStore = create<DesignState>()((set, get) => ({
                 crashed: rt.crashed,
                 rps: rt.rps ?? n.data.rps,
                 p95: rt.p95 ?? n.data.p95,
+                errorPct: rt.errorPct ?? n.data.errorPct ?? 0,
+                cbState: rt.cbState ?? n.data.cbState ?? "closed",
               },
             }
           : n
@@ -147,6 +161,8 @@ export const useDesignStore = create<DesignState>()((set, get) => ({
             crashed: n.data.crashed ?? false,
             rps: n.data.rps ?? 0,
             p95: n.data.p95 ?? 0,
+            errorPct: n.data.errorPct ?? 0,
+            cbState: n.data.cbState ?? "closed",
           },
         };
       }),
