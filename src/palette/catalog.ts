@@ -71,7 +71,7 @@ export const CATALOG: ComponentDef[] = [
     name: "App Server",
     category: "Compute",
     icon: "🖥️", // 🖥️
-    defaults: { serviceTimeMs: 5, concurrency: 50, capacity: 1000, failureRate: 0 },
+    defaults: { serviceTimeMs: 5, concurrency: 30, capacity: 1000, failureRate: 0 },
   },
   {
     id: "worker",
@@ -129,7 +129,7 @@ export const CATALOG: ComponentDef[] = [
     name: "SQL Database",
     category: "Storage",
     icon: "🗄️", // 🗄️
-    defaults: { serviceTimeMs: 8, concurrency: 20, capacity: 500, failureRate: 0 },
+    defaults: { serviceTimeMs: 8, concurrency: 40, capacity: 500, failureRate: 0 },
   },
   {
     id: "nosql-db",
