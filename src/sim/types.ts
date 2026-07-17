@@ -42,6 +42,11 @@ export interface SimState {
   nextTokenId: number;
   genCarry: Record<string, number>; // fractional request accumulator per source
   rr: Record<string, number>; // round-robin counter per node, for fan-out routing
+  flowEvents: FlowEvent[];
+  dropEvents: DropEvent[];
 }
 
 export interface RunParams { speed: number; traffic: number; }
+
+export interface FlowEvent { id: number; sourceId: string; targetId: string; bornAtMs: number; }
+export interface DropEvent { id: number; nodeId: string; atMs: number; }

@@ -20,6 +20,7 @@ export function createSimState(init: StateInit): SimState {
     nodes, order: init.nodes.map((n) => n.id), edges: init.edges, outgoing,
     metrics: { completed: 0, dropped: 0, failed: 0, latencySamples: [], throughputWindow: [], simTimeMs: 0 },
     nextTokenId: 1, genCarry, rr: {},
+    flowEvents: [], dropEvents: [],
   };
 }
 
@@ -100,10 +101,17 @@ export function routeToken(state: SimState, fromId: string, token: RequestToken)
   const i = (state.rr[fromId] ?? 0) % edges.length;
   state.rr[fromId] = (state.rr[fromId] ?? 0) + 1;
   const target = state.nodes[edges[i].target];
+  state.flowEvents.push({ id: token.id, sourceId: fromId, targetId: edges[i].target, bornAtMs: state.metrics.simTimeMs });
+  if (state.flowEvents.length > 10000) state.flowEvents.splice(0, 5000);
   enqueue(state, target, token);
 }
 
 export function enqueue(state: SimState, node: SimNode, token: RequestToken) {
-  if (node.queue.length >= node.capacity) { state.metrics.dropped += 1; return; }
+  if (node.queue.length >= node.capacity) {
+    state.metrics.dropped += 1;
+    state.dropEvents.push({ id: token.id, nodeId: node.id, atMs: state.metrics.simTimeMs });
+    if (state.dropEvents.length > 10000) state.dropEvents.splice(0, 5000);
+    return;
+  }
   node.queue.push(token);
 }
