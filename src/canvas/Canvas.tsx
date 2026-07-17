@@ -13,6 +13,7 @@ import "@xyflow/react/dist/style.css";
 import { useDesignStore, type SystemNodeData } from "../store/designStore";
 import SystemNode from "./SystemNode";
 import { readDraggedComponent } from "./dnd";
+import FlowOverlay from "./FlowOverlay";
 
 const NODE_TYPES = { system: SystemNode };
 
@@ -55,7 +56,7 @@ export function Canvas() {
   );
 
   return (
-    <div className="w-full h-full" onDragOver={handleDragOver} onDrop={handleDrop}>
+    <div className="w-full h-full relative" onDragOver={handleDragOver} onDrop={handleDrop}>
       <ReactFlow
         nodes={nodes}
         edges={edges}
@@ -71,6 +72,7 @@ export function Canvas() {
         <Controls />
         <MiniMap />
       </ReactFlow>
+      <FlowOverlay />
     </div>
   );
 }

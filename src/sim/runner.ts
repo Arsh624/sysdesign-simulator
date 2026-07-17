@@ -1,7 +1,7 @@
 import { createSimState, step } from "./engine";
 import { summarize } from "./metrics";
 import { applyChaos, type ChaosEvent } from "./chaos";
-import type { SimState, SimEdge } from "./types";
+import type { SimState, SimEdge, FlowEvent, DropEvent } from "./types";
 import { useDesignStore } from "../store/designStore";
 import { useSimStore, type HistoryPoint } from "../store/simStore";
 import { findComponent } from "../palette/catalog";
@@ -156,6 +156,16 @@ export class SimRunner {
 
   triggerChaos(ev: ChaosEvent): void {
     if (this.state) applyChaos(this.state, ev);
+  }
+
+  takeFlowEvents(): FlowEvent[] {
+    if (!this.state) return [];
+    return this.state.flowEvents.splice(0);
+  }
+
+  takeDropEvents(): DropEvent[] {
+    if (!this.state) return [];
+    return this.state.dropEvents.splice(0);
   }
 }
 
