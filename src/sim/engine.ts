@@ -1,4 +1,4 @@
-import { SimState, SimNode, SimEdge, RunParams, RequestToken } from "./types";
+import type { SimState, SimNode, SimEdge, RunParams, RequestToken } from "./types";
 
 interface NodeInit {
   id: string; componentId: string; serviceTimeMs: number; concurrency: number;

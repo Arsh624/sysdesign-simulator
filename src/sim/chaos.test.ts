@@ -1,5 +1,5 @@
 import { it, expect } from "vitest";
-import { applyChaos, ChaosKind } from "./chaos";
+import { applyChaos } from "./chaos";
 import { createSimState } from "./engine";
 
 function base() {

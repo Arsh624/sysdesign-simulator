@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { it, expect } from "vitest";
 import { createSimState, step } from "./engine";
 
 // A node with concurrency 1, serviceTime 10ms, capacity 2, fed 500 req/s.

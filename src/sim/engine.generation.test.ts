@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { it, expect } from "vitest";
 import { createSimState, step } from "./engine";
 
 // Source (rate 100 req/s) -> Sink. Over 1000ms at trafficMultiplier 1,

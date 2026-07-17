@@ -1,4 +1,4 @@
-import { SimState } from "./types";
+import type { SimState } from "./types";
 
 export type ChaosKind = "latency-spike" | "crash" | "slowdown" | "recover";
 export interface ChaosEvent { kind: ChaosKind; nodeId: string; factor?: number; }
