@@ -12,7 +12,7 @@ interface Particle {
   sourceId: string;
   targetId: string;
   start: number;
-  /** true if this particle rides the polyline for edge sourceId->targetId backward (a response hop) */
+  /** true if this particle rides the wire for edge sourceId->targetId backward (a response hop) */
   isResponse: boolean;
 }
 
@@ -21,14 +21,8 @@ interface DropFlash {
   start: number;
 }
 
-interface Point {
-  x: number;
-  y: number;
-}
-
-interface EdgePolyline {
-  points: Point[];
-  cum: number[];
+interface PathInfo {
+  path: SVGPathElement;
   total: number;
 }
 
@@ -48,45 +42,21 @@ function packetColor(util: number, crashed: boolean): string {
   return lerpColor(AMBER, RED, (t - 0.5) / 0.5);
 }
 
-/** Build the smoothstep-shaped elbow polyline (horizontal routing) between a source's right-center and a target's left-center. */
-function buildElbowPolyline(p0: Point, p3: Point): EdgePolyline {
-  const midX = (p0.x + p3.x) / 2;
-  const points: Point[] = [p0, { x: midX, y: p0.y }, { x: midX, y: p3.y }, p3];
-  const cum: number[] = [0];
-  let total = 0;
-  for (let i = 1; i < points.length; i++) {
-    const dx = points[i].x - points[i - 1].x;
-    const dy = points[i].y - points[i - 1].y;
-    total += Math.sqrt(dx * dx + dy * dy);
-    cum.push(total);
-  }
-  return { points, cum, total };
-}
-
-/** Walk arc-length t in [0,1] along a polyline, returning the point and the direction angle of the segment it falls in. */
-function pointAtT(poly: EdgePolyline, t: number): { x: number; y: number; angle: number } {
-  const { points, cum, total } = poly;
+/** Sample a point + tangent angle at arc-length fraction t in [0,1] along an SVG path. */
+function pointAtT(info: PathInfo, t: number): { x: number; y: number; angle: number } {
+  const { path, total } = info;
   const clampedT = Math.max(0, Math.min(1, t));
-  const targetLen = clampedT * total;
+  const L = clampedT * total;
+  const p = path.getPointAtLength(L);
 
-  let segIdx = points.length - 2;
-  for (let i = 1; i < cum.length; i++) {
-    if (targetLen <= cum[i] || i === cum.length - 1) {
-      segIdx = i - 1;
-      break;
-    }
-  }
+  const dL = 2;
+  const L0 = Math.max(0, L - dL);
+  const L1 = Math.min(total, L + dL);
+  const p0 = path.getPointAtLength(L0);
+  const p1 = path.getPointAtLength(L1);
+  const angle = Math.atan2(p1.y - p0.y, p1.x - p0.x);
 
-  const segStart = points[segIdx];
-  const segEnd = points[segIdx + 1];
-  const segLen = cum[segIdx + 1] - cum[segIdx];
-  const segT = segLen > 0 ? (targetLen - cum[segIdx]) / segLen : 0;
-
-  return {
-    x: segStart.x + (segEnd.x - segStart.x) * segT,
-    y: segStart.y + (segEnd.y - segStart.y) * segT,
-    angle: Math.atan2(segEnd.y - segStart.y, segEnd.x - segStart.x),
-  };
+  return { x: p.x, y: p.y, angle };
 }
 
 export default function FlowOverlay() {
@@ -118,11 +88,6 @@ export default function FlowOverlay() {
           cx: number;
           cy: number;
           w: number;
-          h: number;
-          exitX: number;
-          exitY: number;
-          entryX: number;
-          entryY: number;
           util: number;
           crashed: boolean;
           queueDepth: number;
@@ -135,38 +100,51 @@ export default function FlowOverlay() {
           cx: n.position.x + w / 2,
           cy: n.position.y + h / 2,
           w,
-          h,
-          exitX: n.position.x + w,
-          exitY: n.position.y + h / 2,
-          entryX: n.position.x,
-          entryY: n.position.y + h / 2,
           util: n.data.utilization ?? 0,
           crashed: n.data.crashed ?? false,
           queueDepth: n.data.queueDepth ?? 0,
         });
       }
 
-      // Build the drawn-edge -> elbow polyline lookup once per frame, keyed by "source->target".
-      const edgePolylines = new Map<string, EdgePolyline>();
-      for (const e of edges) {
-        const S = nodeMap.get(e.source);
-        const T = nodeMap.get(e.target);
-        if (!S || !T) continue;
-        const key = `${e.source}->${e.target}`;
-        edgePolylines.set(key, buildElbowPolyline({ x: S.exitX, y: S.exitY }, { x: T.entryX, y: T.entryY }));
+      // Sample React Flow's actual rendered SVG edge paths once per frame, keyed by edge id.
+      const pathById = new Map<string, PathInfo>();
+      try {
+        const pathEls = document.querySelectorAll<SVGPathElement>(".react-flow__edge-path");
+        pathEls.forEach((path) => {
+          try {
+            const edgeEl = path.closest(".react-flow__edge");
+            const id = edgeEl?.getAttribute("data-id");
+            if (!id) return;
+            const total = path.getTotalLength();
+            if (!total || !Number.isFinite(total) || total <= 0) return;
+            pathById.set(id, { path, total });
+          } catch {
+            // detached/invalid path — skip
+          }
+        });
+      } catch {
+        // querySelectorAll can theoretically throw in exotic environments — skip this frame's wires
       }
 
-      // Match incoming flow events to a drawn edge's polyline; drop events with no matching wire.
+      // Match a drawn edge (source->target) to its rendered path.
+      const pathByEdgeKey = new Map<string, PathInfo>();
+      for (const e of edges) {
+        const info = pathById.get(e.id);
+        if (!info) continue;
+        pathByEdgeKey.set(`${e.source}->${e.target}`, info);
+      }
+
+      // Match incoming flow events to a drawn edge's path; drop events with no matching wire.
       for (const f of flows) {
         if (particlesRef.current.length >= MAX_PARTICLES) continue;
-        if (edgePolylines.has(`${f.sourceId}->${f.targetId}`)) {
+        if (pathByEdgeKey.has(`${f.sourceId}->${f.targetId}`)) {
           particlesRef.current.push({
             sourceId: f.sourceId,
             targetId: f.targetId,
             start: now,
             isResponse: false,
           });
-        } else if (edgePolylines.has(`${f.targetId}->${f.sourceId}`)) {
+        } else if (pathByEdgeKey.has(`${f.targetId}->${f.sourceId}`)) {
           // Response hop: travels the drawn edge targetId->? backward, i.e. along edge (f.targetId -> f.sourceId).
           particlesRef.current.push({
             sourceId: f.targetId,
@@ -217,26 +195,34 @@ export default function FlowOverlay() {
       }
       ctx.globalAlpha = 1;
 
-      // wire pass: red error wires + label for edges whose target is failing, drawn along the full elbow polyline
+      // wire pass: red error wires + label for edges whose target is failing, stroking the real SVG path
       for (const e of edges) {
         const T = nodeMap.get(e.target);
         if (!T) continue;
         const failing = T.crashed || T.util >= 0.85;
         if (!failing) continue;
-        const poly = edgePolylines.get(`${e.source}->${e.target}`);
-        if (!poly) continue;
+        const info = pathByEdgeKey.get(`${e.source}->${e.target}`);
+        if (!info) continue;
 
-        ctx.beginPath();
-        ctx.strokeStyle = "#ef4444";
-        ctx.lineWidth = Math.max(1, 2 * zoom);
-        poly.points.forEach((pt, i) => {
-          const [sx, sy] = toScreen(pt.x, pt.y);
-          if (i === 0) ctx.moveTo(sx, sy);
-          else ctx.lineTo(sx, sy);
-        });
-        ctx.stroke();
+        try {
+          const d = info.path.getAttribute("d");
+          if (!d) continue;
+          const p2d = new Path2D(d);
 
-        const mid = pointAtT(poly, 0.5);
+          ctx.save();
+          // Flow coords -> device pixels: same pan/zoom as toScreen, scaled by dpr.
+          ctx.setTransform(dpr * zoom, 0, 0, dpr * zoom, dpr * vx, dpr * vy);
+          ctx.strokeStyle = "#ef4444";
+          ctx.lineWidth = 2.5 / zoom;
+          ctx.stroke(p2d);
+          ctx.restore();
+          // restore the base dpr transform used by the rest of this pass
+          ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        } catch {
+          continue;
+        }
+
+        const mid = pointAtT(info, 0.5);
         const [mx, my] = toScreen(mid.x, mid.y);
         const label = "error";
         ctx.font = `${Math.max(9, 9 * zoom)}px sans-serif`;
@@ -265,17 +251,23 @@ export default function FlowOverlay() {
         ctx.fillText(label, mx, my + 0.5);
       }
 
-      // traveling particles: pills riding the elbow polyline of the drawn wire
+      // traveling particles: pills riding the real SVG path of the drawn wire
       ctx.globalCompositeOperation = "lighter";
       particlesRef.current = particlesRef.current.filter((p) => {
         const rawT = (now - p.start) / TRAVEL_MS;
         if (rawT >= 1) return false;
-        const poly = edgePolylines.get(`${p.sourceId}->${p.targetId}`);
-        if (!poly) return false;
-        // Response particles ride the same polyline but travel backward (t: 1 -> 0).
+        const info = pathByEdgeKey.get(`${p.sourceId}->${p.targetId}`);
+        if (!info) return false;
+        // Response particles ride the same path but travel backward (t: 1 -> 0).
         const t = p.isResponse ? 1 - rawT : rawT;
 
-        const { x: fx, y: fy, angle } = pointAtT(poly, t);
+        let sample;
+        try {
+          sample = pointAtT(info, t);
+        } catch {
+          return false;
+        }
+        const { x: fx, y: fy, angle } = sample;
         const [sx, sy] = toScreen(fx, fy);
 
         // Utilization/crash coloring is keyed off the logical destination of this hop.
