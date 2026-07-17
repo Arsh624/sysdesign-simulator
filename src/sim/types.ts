@@ -1,32 +1,44 @@
+export type CbState = "closed" | "open" | "half";
+
+export interface Call {
+  id: number;              // unique per call (also used for flow events)
+  reqId: number;           // the request (root) id
+  nodeId: string;
+  parent: Call | null;     // null = root (returns to source)
+  sourceId: string;        // the source node that generated the request
+  enqueuedAtMs: number;
+  phase: "queued" | "serving" | "waiting";
+  remainingMs: number;     // serving countdown
+  pendingChildren: number;
+  childError: boolean;
+  bornAtMs: number;        // request birth (copied from root)
+  deadlineMs: number;      // bornAtMs + REQUEST_TIMEOUT_MS
+}
+
 export interface SimNode {
   id: string;
   componentId: string;
-  serviceTimeMs: number;
-  concurrency: number;
-  capacity: number;         // max queue length
+  serviceTimeMs: number;    // BASE local service time (chaos mutates this)
+  concurrency: number;      // worker pool size
+  capacity: number;         // queue bound (chaos crash sets 0)
   failureRate: number;
   isSource: boolean;
   isSink: boolean;
-  genRatePerSec?: number;   // for sources
+  genRatePerSec?: number;
+  variance: number;         // lognormal sigma, e.g. 0.4
   // runtime:
-  queue: RequestToken[];        // waiting
-  inService: { token: RequestToken; remainingMs: number }[];
-  // accumulators for utilization:
+  queue: Call[];
+  active: Call[];           // serving OR waiting (each holds a worker)
   busyMsThisWindow: number;
-  // accumulators for per-node telemetry (rps / p95):
-  completedCount: number;
-  latencyWindow: number[];
+  completedCount: number;   // calls returned from this node
+  errorCount: number;       // calls returned as error from this node
+  windowCompleted: number;  // per-snapshot-window counters (runner resets)
+  windowErrors: number;
+  latencyWindow: number[];  // per-call total durations at this node (enqueue->return), cap 500
+  cb: { state: CbState; recent: number[]; openedAtMs: number };
 }
 
 export interface SimEdge { id: string; source: string; target: string; }
-
-export interface RequestToken {
-  id: number;
-  bornAtMs: number;         // sim time created
-  latencyMs: number;        // accumulated
-  failed: boolean;
-  nodeEnqueuedAtMs?: number; // sim time this token was last enqueued at a node (for per-node latency)
-}
 
 export interface Metrics {
   completed: number;
@@ -43,9 +55,10 @@ export interface SimState {
   edges: SimEdge[];
   outgoing: Record<string, SimEdge[]>;
   metrics: Metrics;
-  nextTokenId: number;
+  nextCallId: number;
+  inFlight: number;          // live requests
+  rng: () => number;         // seeded, injectable
   genCarry: Record<string, number>; // fractional request accumulator per source
-  rr: Record<string, number>; // round-robin counter per node, for fan-out routing
   flowEvents: FlowEvent[];
   dropEvents: DropEvent[];
 }

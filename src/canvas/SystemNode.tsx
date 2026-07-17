@@ -73,8 +73,25 @@ function SystemNode(props: NodeProps) {
               Q {data.queueDepth}
             </div>
           )}
-          <div className="mt-0.5 text-[10px] leading-tight text-gray-700">
-            {Math.round(data.rps ?? 0)} rps · {Math.round(data.p95 ?? 0)}ms p95
+          <div className="mt-0.5 flex items-center gap-1 text-[10px] leading-tight text-gray-700">
+            <span>
+              {Math.round(data.rps ?? 0)} rps · {Math.round(data.p95 ?? 0)}ms p95
+            </span>
+            {(data.errorPct ?? 0) > 0.05 && (
+              <span className="font-semibold text-red-700">
+                err {Math.round((data.errorPct ?? 0) * 100)}%
+              </span>
+            )}
+            {data.cbState === "open" && (
+              <span className="rounded bg-red-600 px-1 font-semibold text-white">
+                CB OPEN
+              </span>
+            )}
+            {data.cbState === "half" && (
+              <span className="rounded bg-amber-500 px-1 font-semibold text-white">
+                CB HALF
+              </span>
+            )}
           </div>
         </div>
       )}

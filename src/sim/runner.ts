@@ -3,8 +3,9 @@ import { summarize, percentile } from "./metrics";
 import { applyChaos, type ChaosEvent } from "./chaos";
 import type { SimState, SimEdge, FlowEvent, DropEvent } from "./types";
 import { useDesignStore } from "../store/designStore";
-import { useSimStore, type HistoryPoint } from "../store/simStore";
+import { useSimStore, type HistoryPoint, type Regime } from "../store/simStore";
 import { findComponent } from "../palette/catalog";
+import { varianceFor } from "./profiles";
 
 /**
  * Bridges the pure simulation engine (src/sim/engine.ts) to the browser's
@@ -19,7 +20,6 @@ export class SimRunner {
   private lastTs: number | null = null;
   private windowMs = 0;
   private lastCompleted = 0;
-  private lastNodeCompleted: Record<string, number> = {};
   private paused = false;
 
   private build(): void {
@@ -38,6 +38,7 @@ export class SimRunner {
         isSource: def?.isSource ?? false,
         isSink: def?.isSink ?? false,
         genRatePerSec: n.data.genRatePerSec,
+        variance: varianceFor(n.data.componentId),
       };
     });
 
@@ -45,7 +46,7 @@ export class SimRunner {
       .filter((e) => nodeIds.has(e.source) && nodeIds.has(e.target))
       .map((e) => ({ id: e.id, source: e.source, target: e.target }));
 
-    this.state = createSimState({ nodes: nodeInits, edges: simEdges });
+    this.state = createSimState({ nodes: nodeInits, edges: simEdges, seed: 42 });
   }
 
   start(): void {
@@ -64,7 +65,6 @@ export class SimRunner {
     this.lastTs = null;
     this.windowMs = 0;
     this.lastCompleted = 0;
-    this.lastNodeCompleted = {};
     this.raf = requestAnimationFrame(this.frame);
   }
 
@@ -108,7 +108,9 @@ export class SimRunner {
       throughput,
       dropRate: summary.dropRate,
     };
-    useSimStore.getState().pushSnapshot(summary, point);
+
+    let maxUtil = 0;
+    let anyCbOpen = false;
 
     for (const id of this.state.order) {
       const n = this.state.nodes[id];
@@ -117,14 +119,41 @@ export class SimRunner {
       const crashed = n.capacity === 0;
       // Generating sources never "complete" work themselves, so show their
       // outbound request rate instead of a always-zero processing rate.
-      let rps = (n.completedCount - (this.lastNodeCompleted[id] ?? 0)) / (windowMs / 1000 || 1);
+      const windowTotal = n.windowCompleted;
+      let rps = n.windowCompleted / (windowMs / 1000 || 1);
       if (n.isSource && n.genRatePerSec) rps = n.genRatePerSec * traffic;
-      this.lastNodeCompleted[id] = n.completedCount;
+      n.windowCompleted = 0;
+      const errorPct = windowTotal > 0 ? n.windowErrors / windowTotal : 0;
+      n.windowErrors = 0;
       const p95 = percentile(n.latencyWindow, 95);
       if (n.latencyWindow.length > 300) n.latencyWindow = n.latencyWindow.slice(-300);
-      useDesignStore.getState().updateNodeRuntime(id, { utilization, queueDepth, crashed, rps, p95 });
+      const cbState = n.cb.state;
+
+      if (!n.isSource) maxUtil = Math.max(maxUtil, utilization);
+      if (cbState === "open") anyCbOpen = true;
+
+      useDesignStore.getState().updateNodeRuntime(id, {
+        utilization,
+        queueDepth,
+        crashed,
+        rps,
+        p95,
+        errorPct,
+        cbState,
+      });
       n.busyMsThisWindow = 0;
     }
+
+    const totalOutcomes = summary.completed + summary.failed;
+    const errRate = summary.dropRate + (totalOutcomes > 0 ? summary.failed / totalOutcomes : 0);
+    const regime: Regime =
+      errRate > 0.15 || anyCbOpen
+        ? "RUNAWAY"
+        : maxUtil >= 0.85 || summary.dropRate > 0.01
+          ? "SATURATED"
+          : "STEADY";
+
+    useSimStore.getState().pushSnapshot(summary, point, regime);
   }
 
   pause(): void {
@@ -153,7 +182,6 @@ export class SimRunner {
     this.lastTs = null;
     this.windowMs = 0;
     this.lastCompleted = 0;
-    this.lastNodeCompleted = {};
     this.paused = false;
     useSimStore.getState().reset();
     for (const n of useDesignStore.getState().nodes) {
@@ -163,6 +191,8 @@ export class SimRunner {
         crashed: false,
         rps: 0,
         p95: 0,
+        errorPct: 0,
+        cbState: "closed",
       });
     }
   }
