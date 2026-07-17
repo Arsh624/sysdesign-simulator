@@ -19,7 +19,7 @@ export const PRESETS: PresetSpec[] = [
     id: "url-shortener",
     name: "URL Shortener",
     steps: [
-      { id: "client-src", componentId: "client", genRatePerSec: 80 },
+      { id: "client-src", componentId: "client", genRatePerSec: 900 },
       { id: "api-gateway", componentId: "api-gateway" },
       { id: "app-server", componentId: "app-server" },
       { id: "cache", componentId: "cache" },
@@ -30,7 +30,7 @@ export const PRESETS: PresetSpec[] = [
     id: "news-feed",
     name: "News Feed",
     steps: [
-      { id: "client-src", componentId: "client", genRatePerSec: 60 },
+      { id: "client-src", componentId: "client", genRatePerSec: 700 },
       { id: "load-balancer", componentId: "load-balancer" },
       { id: "app-server", componentId: "app-server" },
       { id: "nosql-db", componentId: "nosql-db" },
@@ -41,7 +41,7 @@ export const PRESETS: PresetSpec[] = [
     id: "chat",
     name: "Chat / Messaging",
     steps: [
-      { id: "client-src", componentId: "client", genRatePerSec: 100 },
+      { id: "client-src", componentId: "client", genRatePerSec: 1100 },
       { id: "api-gateway", componentId: "api-gateway" },
       { id: "app-server", componentId: "app-server" },
       { id: "message-queue", componentId: "message-queue" },

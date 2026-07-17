@@ -66,6 +66,7 @@ export function Canvas() {
         nodeTypes={NODE_TYPES}
         onNodeClick={handleNodeClick}
         onPaneClick={handlePaneClick}
+        deleteKeyCode={["Delete", "Backspace"]}
         fitView
       >
         <Background />

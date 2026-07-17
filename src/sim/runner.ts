@@ -88,6 +88,7 @@ export class SimRunner {
   private snapshot(windowMs: number): void {
     if (!this.state) return;
     const m = this.state.metrics;
+    const { traffic } = useSimStore.getState();
 
     if (m.latencySamples.length > 2000) {
       m.latencySamples = m.latencySamples.slice(-2000);
@@ -114,7 +115,10 @@ export class SimRunner {
       const utilization = Math.min(1, n.busyMsThisWindow / (n.concurrency * windowMs || 1));
       const queueDepth = n.queue.length;
       const crashed = n.capacity === 0;
-      const rps = (n.completedCount - (this.lastNodeCompleted[id] ?? 0)) / (windowMs / 1000 || 1);
+      // Generating sources never "complete" work themselves, so show their
+      // outbound request rate instead of a always-zero processing rate.
+      let rps = (n.completedCount - (this.lastNodeCompleted[id] ?? 0)) / (windowMs / 1000 || 1);
+      if (n.isSource && n.genRatePerSec) rps = n.genRatePerSec * traffic;
       this.lastNodeCompleted[id] = n.completedCount;
       const p95 = percentile(n.latencyWindow, 95);
       if (n.latencyWindow.length > 300) n.latencyWindow = n.latencyWindow.slice(-300);

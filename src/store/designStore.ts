@@ -66,7 +66,7 @@ export const useDesignStore = create<DesignState>()((set, get) => ({
         componentId,
         label: def.name,
         params: { ...def.defaults },
-        genRatePerSec: def.isSource ? 10 : undefined,
+        genRatePerSec: def.isSource ? 800 : undefined,
         utilization: 0,
         queueDepth: 0,
         crashed: false,
