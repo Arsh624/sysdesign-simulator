@@ -9,7 +9,11 @@ export function initAutosave(): () => void {
   const unsubscribe = useDesignStore.subscribe((state) => {
     if (timer) clearTimeout(timer);
     timer = setTimeout(() => {
-      autosave({ nodes: state.nodes, edges: state.edges });
+      const cleanNodes = state.nodes.map((n) => ({
+        ...n,
+        data: { ...n.data, utilization: 0, queueDepth: 0, crashed: false },
+      }));
+      autosave({ nodes: cleanNodes, edges: state.edges });
     }, DEBOUNCE_MS);
   });
 
