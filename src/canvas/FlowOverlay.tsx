@@ -5,7 +5,7 @@ import { useDesignStore } from "../store/designStore";
 
 const TRAVEL_MS = 750;
 const FLASH_MS = 450;
-const MAX_PARTICLES = 350;
+const MAX_PARTICLES = 140;
 const MAX_FLASHES = 100;
 
 interface Particle {
@@ -279,9 +279,9 @@ export default function FlowOverlay() {
 
         const drawAngle = p.isResponse ? angle + Math.PI : angle;
         const sizeScale = p.isResponse ? 0.75 : 1;
-        const length = Math.max(3, 9 * zoom) * sizeScale;
-        const thickness = Math.max(1.2, 3.5 * zoom) * sizeScale;
-        const glowR = thickness * 2.5;
+        const length = Math.max(2, 5 * zoom) * sizeScale;
+        const thickness = Math.max(0.8, 2 * zoom) * sizeScale;
+        const glowR = thickness * 1.5;
 
         ctx.save();
         ctx.translate(sx, sy);
